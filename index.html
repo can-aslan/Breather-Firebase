@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <link rel="stylesheet" href="./style/style.css" />
+        <link
+            rel="stylesheet"
+            href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css"
+        />
+        <link
+            href="https://fonts.googleapis.com/icon?family=Material+Icons"
+            rel="stylesheet"
+        />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link
+            href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Merriweather+Sans:ital,wght@0,300;0,400;0,600;1,700&family=Open+Sans:wght@400;600&display=swap"
+            rel="stylesheet"
+        />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link
+            href="https://fonts.googleapis.com/css2?family=Sarabun:wght@100;300;400&display=swap"
+            rel="stylesheet"
+        />
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta name="theme-color" content="#000000" />
+        <meta name="description" content="CS465 Assignment 1" />
+        <title>Breather - CS465 Assignment 3</title>
+        <link rel="icon" href="./style/logo.png" type="image/x-icon" />
+
+        <!-- WIREFRAME VERTEX SHADER -->
+        <script id="wireframe-vertex-shader" type="x-shader/x-vertex">
+
+            attribute vec4 vPosition;
+            attribute vec4 vColor;
+
+            uniform mat4 modelViewMatrix;
+            uniform mat4 projectionMatrix;
+            varying vec4 fColor;
+
+            void main(void) {
+                gl_Position = projectionMatrix * modelViewMatrix * vPosition;
+                fColor = vColor;
+            }
+        </script>
+
+        <!-- WIREFRAME FRAGMENT SHADER -->
+        <script id="wireframe-fragment-shader" type="x-shader/x-fragment">
+            precision mediump float;
+
+            varying vec4 fColor;
+
+            void main(void) {
+                gl_FragColor = fColor;
+            }
+        </script>
+
+        <!-- GOURAUD VERTEX SHADER -->
+        <script id="gouraud-vertex-shader" type="x-shader/x-vertex">
+            attribute vec2 vTexCoord;
+            attribute vec4 vPosition;
+            attribute vec3 vNormal;
+            attribute vec4 vColor;
+
+            varying vec2 texCoord;
+            varying vec4 fColor;
+            varying vec3 R;
+
+            uniform vec4 ambientProduct, diffuseProduct, specularProduct;
+            uniform mat4 modelViewMatrix;
+            uniform mat4 projectionMatrix;
+            uniform vec4 lightPosition;
+            uniform float shininess;
+
+            void main()
+            {
+                vec3 pos = -(modelViewMatrix * vPosition).xyz;
+                vec3 light = lightPosition.xyz;
+                vec3 L = normalize( light - pos );
+
+                vec3 E = normalize( -pos );
+                vec3 H = normalize( L + E );
+
+                vec4 NN = vec4(vNormal,0);
+
+                // Transform vertex normal into eye coordinates
+                vec3 N = normalize( (modelViewMatrix*NN).xyz);
+
+                // Compute terms in the illumination equation
+                vec4 ambient = ambientProduct;
+
+                float Kd = max( dot(L, N), 0.0 );
+                vec4  diffuse = Kd*diffuseProduct;
+
+                float Ks = pow( max(dot(N, H), 0.0), shininess );
+                vec4  specular = Ks * specularProduct;
+
+                if( dot(L, N) < 0.0 ) {
+                    specular = vec4(0.0, 0.0, 0.0, 1.0);
+                }
+
+                gl_Position = projectionMatrix * modelViewMatrix * vPosition;
+
+                R = reflect(-L, N);
+
+                fColor = (ambient + diffuse + specular) * 0.8 + vColor  * 0.7;
+                fColor.a = 1.0;
+
+                texCoord = vTexCoord;
+            }
+        </script>
+
+        <!-- GOURAUD FRAGMENT SHADER -->
+        <script id="gouraud-fragment-shader" type="x-shader/x-fragment">
+            precision mediump float;
+
+            uniform int i;
+            uniform sampler2D u_texture;
+
+            varying vec4 fColor;
+            varying vec2 texCoord;
+
+            void main()
+            {
+                vec4 texColor = texture2D(u_texture, texCoord);
+                gl_FragColor = fColor;
+            }
+        </script>
+
+        <script id="phong-vertex-shader" type="x-shader/x-vertex">
+            attribute vec4 vPosition;
+            attribute vec3 vNormal;
+
+            varying vec3 normalInterp;
+            varying vec3 vertPos;
+
+            varying vec3 N, L, E, R;
+            uniform mat4 modelViewMatrix;
+            uniform mat4 projectionMatrix;
+            uniform vec4 lightPosition;
+            uniform mat3 normalMatrix;
+
+            void main()
+            {
+                vec3 pos = (modelViewMatrix * vPosition).xyz;
+
+                if (lightPosition.w == 0.0) {
+                    L = normalize(lightPosition.xyz);
+                }
+                else {
+                    L = normalize(lightPosition.xyz - pos);
+                }
+
+                E = -normalize(pos);
+                N = normalize(normalMatrix * vNormal.xyz);
+                R = normalize(reflect(pos, N));
+
+                gl_Position = projectionMatrix * modelViewMatrix * vPosition;
+            }
+        </script>
+
+        <script id="phong-fragment-shader" type="x-shader/x-fragment">
+            precision mediump float;
+
+            uniform vec4 ambientProduct;
+            uniform vec4 diffuseProduct;
+            uniform vec4 specularProduct;
+            uniform float shininess;
+            varying vec3 N, L, E, R;
+
+            void main()
+            {
+                vec4 fColor;
+
+                vec3 H = normalize( L + E );
+                vec4 ambient = ambientProduct;
+
+                vec4 diffuse = max( dot(L, -N), 0.6 ) * diffuseProduct;
+
+                vec4 specular = pow( max(dot(N, -H), 0.0), 1.0 ) * specularProduct;
+
+                if( dot(L, N) < 0.0 )
+                    specular = vec4(0.0, 0.0, 0.0, 1.0);
+
+                fColor = ambient + diffuse + specular;
+                fColor.a = 1.0;
+
+                gl_FragColor = fColor;
+            }
+        </script>
+
+        <script id="phong-fragment-shader-env" type="x-shader/x-fragment">
+            precision mediump float;
+
+            uniform vec4 ambientProduct;
+            uniform vec4 diffuseProduct;
+            uniform vec4 specularProduct;
+            uniform float shininess;
+            varying vec3 N, L, E, R;
+
+            uniform samplerCube envMap;
+
+            void main()
+            {
+                vec4 fColor;
+
+                vec3 H = normalize( L + E );
+                vec4 ambient = ambientProduct;
+
+
+                vec4 specular = pow( max(dot(N, -H), 0.0), 1.0 ) * specularProduct;
+
+                if( dot(L, N) < 0.0 )
+                    specular = vec4(0.0, 0.0, 0.0, 1.0);
+
+
+                vec4 envColor = textureCube(envMap, R);
+
+                vec4 diffuse = max( dot(L, -N), 0.0 ) * envColor;
+
+                fColor = envColor + diffuse + specular;
+
+                gl_FragColor = fColor;
+            }
+        </script>
+
+        <!-- GOURAUD VERTEX SHADER (ENV) -->
+        <script id="gouraud-vertex-shader-env" type="x-shader/x-vertex">
+            attribute vec2 vTexCoord;
+            attribute vec4 vPosition;
+            attribute vec3 vNormal;
+            attribute vec4 vColor;
+
+            varying vec2 texCoord;
+            varying vec4 fColor;
+            varying vec3 R;
+
+            uniform vec4 ambientProduct, diffuseProduct, specularProduct;
+            uniform mat4 modelViewMatrix;
+            uniform mat4 projectionMatrix;
+            uniform vec4 lightPosition;
+            uniform float shininess;
+
+            void main()
+            {
+                vec3 pos = -(modelViewMatrix * vPosition).xyz;
+                vec3 light = lightPosition.xyz;
+                vec3 L = normalize( light - pos );
+
+                vec3 E = normalize( -pos );
+                vec3 H = normalize( L + E );
+
+                vec4 NN = vec4(vNormal,0);
+
+                // Transform vertex normal into eye coordinates
+                vec3 N = normalize( (modelViewMatrix*NN).xyz);
+
+                // Compute terms in the illumination equation
+                vec4 ambient = ambientProduct;
+
+                float Kd = max( dot(L, N), 0.0 );
+                vec4  diffuse = Kd*diffuseProduct;
+
+                float Ks = pow( max(dot(N, H), 0.0), shininess );
+                vec4  specular = Ks * specularProduct;
+
+                if( dot(L, N) < 0.0 ) {
+                    specular = vec4(0.0, 0.0, 0.0, 1.0);
+                }
+
+                gl_Position = projectionMatrix * modelViewMatrix * vPosition;
+
+                R = reflect(-L, N);
+
+                fColor = (ambient + diffuse + specular) * 0.8;
+
+                fColor.a = 1.0;
+
+                texCoord = vTexCoord;
+            }
+        </script>
+        <script id="gouraud-fragment-shader-env" type="x-shader/x-fragment">
+            precision mediump float;
+
+            uniform samplerCube envMap;
+
+            varying vec4 fColor;
+            varying vec3 R;
+
+            void main()
+            {
+                vec4 texColor = textureCube(envMap, R);
+                gl_FragColor = fColor + texColor;
+            }
+        </script>
+
+        <script
+            type="text/javascript"
+            src="./script/utils/webgl-utils.js"
+        ></script>
+        <script
+            type="text/javascript"
+            src="./script/utils/initShaders.js"
+        ></script>
+        <script type="text/javascript" src="./script/utils/MV.js"></script>
+        <script type="text/javascript" src="./script/global.js"></script>
+        <script type="text/javascript" src="./script/enums.js"></script>
+        <script type="text/javascript" src="./script/breather.js"></script>
+
+        <script type="text/javascript" src="./script/buttons.js"></script>
+        <script type="text/javascript" src="./script/sliders.js"></script>
+        <script type="text/javascript" src="./script/main.js"></script>
+    </head>
+    <body>
+        <noscript>You need to enable JavaScript to run this app.</noscript>
+        <div class="main">
+            <div class="header">
+                <h2>Parametric Breather</h2>
+            </div>
+            <div class="body">
+                <div id="grid1">
+                    <div class="menu left-menu">
+                        <button class="shader-btn" id="wireframe">
+                            Wireframe
+                        </button>
+                        <button class="shader-btn" id="gouraud">Gouraud</button>
+                        <button class="shader-btn" id="phong">Phong</button>
+                        <br />
+                        <label class="checkbox-container">
+                            <input type="checkbox" id="env-map" />
+                            <div class="custom-checkbox"></div>
+                            Environment Mapping
+                        </label>
+                        <br />
+                        <div class="dropdown-container">
+                            <label for="env-opt-dropdown"
+                                >Select an environment:</label
+                            >
+                            <select id="env-opt-dropdown">
+                                <option value="option1">Option 1</option>
+                                <option value="option2">Option 2</option>
+                                <option value="option3">Option 3</option>
+                            </select>
+                        </div>
+                        <div class="current-shade-cont">
+                            <p>Current:</p>
+                            <p id="current-shading">Phong</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="webgl">
+                    <canvas
+                        id="gl-canvas"
+                        width="600"
+                        height="600"
+                        style="background-color: black"
+                    >
+                        Oops ... your browser doesn't support the HTML5 canvas
+                        element
+                    </canvas>
+                </div>
+                <div id="grid2">
+                    <div class="right-menu">
+                        <div class="menu-col">
+                            <div class="slider">
+                                AA
+                                <div class="slider-slide">
+                                    <input
+                                        id="AA-slider"
+                                        type="range"
+                                        min="0.1"
+                                        max="0.9"
+                                        step="0.1"
+                                        value="0.4"
+                                    />
+                                    <p id="text-AA">0.4</p>
+                                </div>
+                            </div>
+                            <div class="slider">
+                                MAX U
+                                <div class="slider-slide">
+                                    <input
+                                        id="MAXU-slider"
+                                        type="range"
+                                        min="10"
+                                        max="30"
+                                        step="1"
+                                        value="14.0"
+                                    />
+                                    <p id="text-MAXU">14.0</p>
+                                </div>
+                            </div>
+                            <div class="slider">
+                                MAX V
+                                <div class="slider-slide">
+                                    <input
+                                        id="MAXV-slider"
+                                        type="range"
+                                        min="20"
+                                        max="60"
+                                        step="1"
+                                        value="37.0"
+                                    />
+                                    <p id="text-MAXV">37.0</p>
+                                </div>
+                            </div>
+                            <div class="slider">
+                                INCREMENT U
+                                <div class="slider-slide">
+                                    <input
+                                        id="INCU-slider"
+                                        type="range"
+                                        min="0.1"
+                                        max="0.9"
+                                        step="0.1"
+                                        value="0.5"
+                                    />
+                                    <p id="text-INCU">0.5</p>
+                                </div>
+                            </div>
+                            <div class="slider">
+                                INCREMENT V
+                                <div class="slider-slide">
+                                    <input
+                                        id="INCV-slider"
+                                        type="range"
+                                        min="0.1"
+                                        max="0.9"
+                                        step="0.1"
+                                        value="0.5"
+                                    />
+                                    <p id="text-INCV">0.5</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="menu-col">
+                            <div class="slider">
+                                Zoom
+                                <div class="slider-slide">
+                                    <input
+                                        id="zoom-slider"
+                                        type="range"
+                                        min="1"
+                                        max="15"
+                                        step="0.1"
+                                        value="8"
+                                    />
+                                    <p id="text-zoom">8</p>
+                                </div>
+                            </div>
+                            <div class="slider">
+                                Rotate X
+                                <div class="slider-slide">
+                                    <input
+                                        id="rotateX-slider"
+                                        type="range"
+                                        min="0"
+                                        max="180"
+                                        step="5"
+                                        value="0"
+                                    />
+                                    <p id="text-rotateX">0</p>
+                                </div>
+                            </div>
+                            <div class="slider">
+                                Rotate Y
+                                <div class="slider-slide">
+                                    <input
+                                        id="rotateY-slider"
+                                        type="range"
+                                        min="0"
+                                        max="180"
+                                        step="5"
+                                        value="40"
+                                    />
+                                    <p id="text-rotateY">40</p>
+                                </div>
+                            </div>
+                            <div class="slider">
+                                Rotate Z
+                                <div class="slider-slide">
+                                    <input
+                                        id="rotateZ-slider"
+                                        type="range"
+                                        min="0"
+                                        max="180"
+                                        step="5"
+                                        value="40"
+                                    />
+                                    <p id="text-rotateZ">40</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </body>
+</html>
